@@ -1,0 +1,17 @@
+{{define "questions"}}
+{{range .Questions}}<fieldset><legend>{{.Text}}</legend>{{$name := .Name}}
+{{range $index, $option := .Options}}<label><input type="radio" name="{{$name}}" value="{{$index}}" required> {{$option}}</label>{{end}}
+</fieldset>{{end}}
+{{end}}
+{{define "module"}}{{template "head"}}{{template "account" .}}
+<section><p><a href="/employee">К курсу</a></p><h1>Модуль {{.Number}}. {{.Module.Title}}</h1>
+{{range .Module.Material}}<p>{{.}}</p>{{end}}
+{{if not .Read}}<form method="post" action="/modules/{{.Number}}/read">{{template "csrf" .}}
+<button>Подтверждаю прочтение</button></form>{{else}}<p>Прочтение подтверждено.</p>{{end}}</section>
+{{if .Read}}<section><h2>Тест модуля</h2><p>Проходной балл — 4 из 5.</p>
+{{if .ModuleProgress.LastScore.Valid}}<p role="status">Результат: {{.ModuleProgress.LastScore.Int64}} из 5.
+{{if .ModuleProgress.Passed}}Модуль пройден.{{else}}Попробуйте ещё раз.{{end}}</p>{{end}}
+{{if .ModuleProgress.Passed}}<a href="/employee">Следующий шаг курса</a>{{else}}
+<form method="post" action="/modules/{{.Number}}/quiz">{{template "csrf" .}}{{template "questions" .}}
+<button>Отправить ответы</button></form>{{end}}</section>{{end}}
+{{template "foot"}}{{end}}

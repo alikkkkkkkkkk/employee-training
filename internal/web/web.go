@@ -14,12 +14,13 @@ import (
 	"time"
 
 	"employee-training/internal/store"
+	"employee-training/internal/training"
 )
 
 //go:embed templates/*
 var files embed.FS
 
-var pages = template.Must(template.ParseFS(files, "templates/*.html"))
+var pages = template.Must(template.New("").Funcs(template.FuncMap{"inc": func(n int) int { return n + 1 }}).ParseFS(files, "templates/*.html"))
 
 const sessionCookie = "training_session"
 
@@ -36,11 +37,17 @@ type app struct {
 }
 
 type view struct {
-	User      store.User
-	CSRF      string
-	Message   string
-	Assigned  bool
-	Employees []store.Assignment
+	Modules              []moduleLink
+	TotalModules, Number int
+	Module               training.Module
+	ModuleProgress       store.ModuleProgress
+	Read                 bool
+	Questions            []quizQuestion
+	User                 store.User
+	CSRF                 string
+	Message              string
+	Progress             store.Progress
+	Employees            []store.Assignment
 }
 
 func New(db *store.Store) http.Handler {
@@ -50,6 +57,9 @@ func New(db *store.Store) http.Handler {
 	mux.HandleFunc("POST /login", a.login)
 	mux.HandleFunc("POST /logout", a.require("", a.logout))
 	mux.HandleFunc("GET /employee", a.require("employee", a.employee))
+	mux.HandleFunc("GET /modules/{number}", a.require("employee", a.module))
+	mux.HandleFunc("POST /modules/{number}/read", a.require("employee", a.confirmRead))
+	mux.HandleFunc("POST /modules/{number}/quiz", a.require("employee", a.submitModule))
 	mux.HandleFunc("GET /mentor", a.require("mentor", a.mentor))
 	mux.HandleFunc("POST /mentor/assign", a.require("mentor", a.assign))
 	protected := http.NewCrossOriginProtection().Handler(mux)
@@ -159,15 +169,6 @@ func (a *app) logout(w http.ResponseWriter, r *http.Request, s session) {
 	http.SetCookie(w, &http.Cookie{Name: sessionCookie, Path: "/", MaxAge: -1, HttpOnly: true,
 		SameSite: http.SameSiteLaxMode, Secure: r.TLS != nil})
 	http.Redirect(w, r, "/", http.StatusSeeOther)
-}
-
-func (a *app) employee(w http.ResponseWriter, r *http.Request, s session) {
-	assigned, err := a.store.Assigned(s.user.ID)
-	if err != nil {
-		fail(w, err)
-		return
-	}
-	render(w, "employee", view{User: s.user, CSRF: s.csrf, Assigned: assigned})
 }
 
 func (a *app) mentor(w http.ResponseWriter, r *http.Request, s session) {

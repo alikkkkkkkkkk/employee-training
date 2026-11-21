@@ -2,6 +2,7 @@ package store
 
 import (
 	"database/sql"
+	"employee-training/internal/training"
 	"errors"
 )
 
@@ -16,12 +17,7 @@ var ErrEmployee = errors.New("unknown employee")
 type Assignment struct {
 	Employee User
 	Assigned bool
-}
-
-func (s *Store) Assigned(employeeID int) (bool, error) {
-	var assigned bool
-	err := s.db.QueryRow(`SELECT EXISTS(SELECT 1 FROM assignments WHERE employee_id=?)`, employeeID).Scan(&assigned)
-	return assigned, err
+	Passed   int
 }
 
 func (s *Store) Assign(employeeID int) error {
@@ -46,9 +42,10 @@ func (s *Store) Assign(employeeID int) error {
 
 func (s *Store) Employees() ([]Assignment, error) {
 	rows, err := s.db.Query(`
-		SELECT u.id, u.login, u.name, a.employee_id IS NOT NULL
+		SELECT u.id, u.login, u.name, a.employee_id IS NOT NULL,
+			(SELECT COUNT(*) FROM module_progress WHERE employee_id=u.id AND last_score>=?)
 		FROM users u LEFT JOIN assignments a ON a.employee_id=u.id
-		WHERE u.role='employee' ORDER BY u.id`)
+		WHERE u.role='employee' ORDER BY u.id`, training.ModulePass)
 	if err != nil {
 		return nil, err
 	}
@@ -56,7 +53,7 @@ func (s *Store) Employees() ([]Assignment, error) {
 	var employees []Assignment
 	for rows.Next() {
 		var row Assignment
-		err := rows.Scan(&row.Employee.ID, &row.Employee.Login, &row.Employee.Name, &row.Assigned)
+		err := rows.Scan(&row.Employee.ID, &row.Employee.Login, &row.Employee.Name, &row.Assigned, &row.Passed)
 		if err != nil {
 			return nil, err
 		}

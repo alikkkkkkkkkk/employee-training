@@ -1,6 +1,7 @@
 package web
 
 import (
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/cookiejar"
@@ -124,7 +125,7 @@ func TestAssignment(t *testing.T) {
 		mentor.request("/mentor/assign", url.Values{"employee": {"2"}}, 303)
 	}
 	body := mentor.request("/mentor", nil, 200, "Назначенные сотрудники")
-	if strings.Count(body, "<p>Иван Петров</p>") != 1 {
+	if strings.Count(body, "<p>Иван Петров —") != 1 {
 		t.Fatal("expected one assigned employee")
 	}
 	if err := db.Close(); err != nil {
@@ -138,4 +139,44 @@ func TestAssignment(t *testing.T) {
 	employee = newBrowser(t, New(db))
 	employee.login("employee", "Employee-demo-26", "employee")
 	employee.request("/employee", nil, 200, "Курс назначен")
+}
+
+func answers(scope string, choices ...int) url.Values {
+	form := make(url.Values)
+	for index, choice := range choices {
+		form.Set(fmt.Sprintf("%s-q%d", scope, index+1), fmt.Sprint(choice))
+	}
+	return form
+}
+
+func TestModuleProgress(t *testing.T) {
+	db := openDemo(t, filepath.Join(t.TempDir(), "training.db"))
+	defer db.Close()
+	handler := New(db)
+	mentor, employee, other := newBrowser(t, handler), newBrowser(t, handler), newBrowser(t, handler)
+	mentor.login("mentor", "Mentor-demo-26", "mentor")
+	employee.login("employee", "Employee-demo-26", "employee")
+	other.login("employee2", "Employee-demo-26", "employee")
+	mentor.request("/mentor/assign", url.Values{"employee": {"2"}}, 303)
+	mentor.request("/modules/1", nil, 403)
+	other.request("/modules/1?employee=2", nil, 403)
+	employee.request("/modules/2", nil, 403)
+	employee.request("/modules/2/read", url.Values{}, 403)
+	employee.request("/modules/2/quiz", answers("2", 2, 0, 1, 1, 2), 403)
+	employee.request("/modules/1/quiz", answers("1", 1, 0, 2, 1, 0), 403)
+	employee.request("/modules/1/read", url.Values{}, 303)
+	employee.request("/modules/1/quiz", answers("1", 1, 0, 2, 1), 400)
+	employee.request("/modules/1/quiz", answers("2", 1, 0, 2, 1, 0), 400)
+	employee.request("/modules/1/quiz", answers("1", 1, 0, 2, 0, 1), 303)
+	employee.request("/modules/1", nil, 200, "Результат: 3 из 5")
+	employee.request("/modules/2", nil, 403)
+	employee.request("/modules/1/quiz", answers("1", 1, 0, 2, 1, 1), 303)
+	employee.request("/modules/1", nil, 200, "Результат: 4 из 5")
+	employee.request("/modules/2", nil, 200, "Модуль 2")
+	employee.request("/modules/3", nil, 403)
+	mentor.request("/mentor/assign", url.Values{"employee": {"2"}}, 303)
+	mentor.request("/mentor", nil, 200, "Иван Петров — модулей пройдено: 1 из 3")
+	employee.request("/logout", url.Values{}, 303)
+	employee.login("employee", "Employee-demo-26", "employee")
+	employee.request("/employee", nil, 200, "Пройдено модулей: 1 из 3", `href="/modules/2">Продолжить`)
 }
