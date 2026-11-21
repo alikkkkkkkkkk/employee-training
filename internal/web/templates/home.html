@@ -25,5 +25,17 @@ fieldset{border:1px solid #d2dde5;border-radius:6px;margin:1rem 0;padding:1rem}p
 <label>Логин <input name="login" required autocomplete="username"></label>
 <label>Пароль <input name="password" type="password" required autocomplete="current-password"></label>
 <button>Войти</button></form></section>{{template "foot"}}{{end}}
-{{define "employee"}}{{template "head"}}{{template "account" .}}<section><h1>Кабинет сотрудника</h1></section>{{template "foot"}}{{end}}
-{{define "mentor"}}{{template "head"}}{{template "account" .}}<section><h1>Кабинет наставника</h1></section>{{template "foot"}}{{end}}
+{{define "employee"}}{{template "head"}}{{template "account" .}}<section><h1>Кабинет сотрудника</h1>
+{{if .Assigned}}<h2>Приёмка товара</h2><p>Курс назначен.</p>
+{{else}}<p>Вам пока не назначен курс. После назначения он появится здесь.</p>{{end}}
+</section>{{template "foot"}}{{end}}
+{{define "mentor"}}{{template "head"}}{{template "account" .}}<section><h1>Кабинет наставника</h1>
+<h2>Приёмка товара</h2>
+<form action="/mentor/assign" method="post">{{template "csrf" .}}
+<label>Сотрудник <select name="employee" required><option value="">Выберите сотрудника</option>
+{{range .Employees}}<option value="{{.Employee.ID}}">{{.Employee.Name}} ({{.Employee.Login}})</option>{{end}}
+</select></label><button>Назначить курс</button></form></section>
+<section><h2>Назначенные сотрудники</h2>
+{{$any := false}}{{range .Employees}}{{if .Assigned}}{{$any = true}}<p>{{.Employee.Name}}</p>{{end}}{{end}}
+{{if not $any}}<p>Курс пока никому не назначен.</p>{{end}}
+</section>{{template "foot"}}{{end}}

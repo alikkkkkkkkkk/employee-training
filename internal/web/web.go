@@ -8,6 +8,7 @@ import (
 	"html/template"
 	"log"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -35,9 +36,11 @@ type app struct {
 }
 
 type view struct {
-	User    store.User
-	CSRF    string
-	Message string
+	User      store.User
+	CSRF      string
+	Message   string
+	Assigned  bool
+	Employees []store.Assignment
 }
 
 func New(db *store.Store) http.Handler {
@@ -48,6 +51,7 @@ func New(db *store.Store) http.Handler {
 	mux.HandleFunc("POST /logout", a.require("", a.logout))
 	mux.HandleFunc("GET /employee", a.require("employee", a.employee))
 	mux.HandleFunc("GET /mentor", a.require("mentor", a.mentor))
+	mux.HandleFunc("POST /mentor/assign", a.require("mentor", a.assign))
 	protected := http.NewCrossOriginProtection().Handler(mux)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "no-store")
@@ -158,11 +162,39 @@ func (a *app) logout(w http.ResponseWriter, r *http.Request, s session) {
 }
 
 func (a *app) employee(w http.ResponseWriter, r *http.Request, s session) {
-	render(w, "employee", view{User: s.user, CSRF: s.csrf})
+	assigned, err := a.store.Assigned(s.user.ID)
+	if err != nil {
+		fail(w, err)
+		return
+	}
+	render(w, "employee", view{User: s.user, CSRF: s.csrf, Assigned: assigned})
 }
 
 func (a *app) mentor(w http.ResponseWriter, r *http.Request, s session) {
-	render(w, "mentor", view{User: s.user, CSRF: s.csrf})
+	employees, err := a.store.Employees()
+	if err != nil {
+		fail(w, err)
+		return
+	}
+	render(w, "mentor", view{User: s.user, CSRF: s.csrf, Employees: employees})
+}
+
+func (a *app) assign(w http.ResponseWriter, r *http.Request, s session) {
+	id, err := strconv.Atoi(r.PostForm.Get("employee"))
+	if err != nil {
+		http.Error(w, "Выберите сотрудника", http.StatusBadRequest)
+		return
+	}
+	err = a.store.Assign(id)
+	if errors.Is(err, store.ErrEmployee) {
+		http.Error(w, "Сотрудник не найден", http.StatusNotFound)
+		return
+	}
+	if err != nil {
+		fail(w, err)
+		return
+	}
+	http.Redirect(w, r, "/mentor", http.StatusSeeOther)
 }
 
 func fail(w http.ResponseWriter, err error) {

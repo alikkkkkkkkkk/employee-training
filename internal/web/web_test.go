@@ -109,3 +109,33 @@ func TestSessionAndRoles(t *testing.T) {
 	b.login("mentor", "Mentor-demo-26", "mentor")
 	b.request("/employee", nil, 403)
 }
+
+func TestAssignment(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "training.db")
+	db := openDemo(t, path)
+	handler := New(db)
+	mentor, employee := newBrowser(t, handler), newBrowser(t, handler)
+	mentor.login("mentor", "Mentor-demo-26", "mentor")
+	employee.login("employee", "Employee-demo-26", "employee")
+	employee.request("/employee", nil, 200, "Вам пока не назначен курс")
+	employee.request("/mentor/assign", url.Values{"employee": {"2"}}, 403)
+	mentor.request("/mentor/assign", url.Values{"employee": {"1"}}, 404)
+	for range 2 {
+		mentor.request("/mentor/assign", url.Values{"employee": {"2"}}, 303)
+	}
+	body := mentor.request("/mentor", nil, 200, "Назначенные сотрудники")
+	if strings.Count(body, "<p>Иван Петров</p>") != 1 {
+		t.Fatal("expected one assigned employee")
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+	db, err := store.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	employee = newBrowser(t, New(db))
+	employee.login("employee", "Employee-demo-26", "employee")
+	employee.request("/employee", nil, 200, "Курс назначен")
+}
