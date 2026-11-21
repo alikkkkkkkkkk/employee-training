@@ -1,0 +1,5 @@
+/employee-training
+*.db
+*.db-*
+.env
+.env.*
