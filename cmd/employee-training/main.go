@@ -14,14 +14,19 @@ func main() {
 	addr := flag.String("addr", "127.0.0.1:8080", "HTTP listen address")
 	dbPath := flag.String("db", "training.db", "SQLite database path")
 	seed := flag.Bool("seed", false, "prepare demo accounts and exit")
+	showcase := flag.Bool("seed-showcase", false, "prepare accounts and unlock the final exam for a fresh second employee")
 	flag.Parse()
 	db, err := store.Open(*dbPath)
 	if err != nil {
 		log.Fatal(err)
 	}
 	defer db.Close()
-	if *seed {
-		if err := db.Seed(); err != nil {
+	if *seed || *showcase {
+		prepare := db.Seed
+		if *showcase {
+			prepare = db.SeedShowcase
+		}
+		if err := prepare(); err != nil {
 			log.Fatal(err)
 		}
 		log.Print("Demo accounts ready")

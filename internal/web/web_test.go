@@ -299,3 +299,26 @@ func TestFinalConcurrentLimit(t *testing.T) {
 	}
 	employee.request("/final", nil, 200, "попытки исчерпаны", "Осталось попыток: 0")
 }
+
+func TestShowcaseSeedPreservesProgress(t *testing.T) {
+	db, err := store.Open(filepath.Join(t.TempDir(), "training.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if err := db.SeedShowcase(); err != nil {
+		t.Fatal(err)
+	}
+	handler := New(db)
+	employee, showcase := newBrowser(t, handler), newBrowser(t, handler)
+	employee.login("employee", "Employee-demo-26", "employee")
+	employee.request("/employee", nil, 200, "Вам пока не назначен курс")
+	showcase.login("employee2", "Employee-demo-26", "employee")
+	showcase.request("/employee", nil, 200, "Пройдено модулей: 3 из 3")
+	showcase.request("/final", nil, 200, "Первый результат: Нет попытки")
+	showcase.request("/final", finalForm(showcase, 1, 0, 2, 1, 0, 2, 1, 0, 0, 0), 303)
+	if err := db.SeedShowcase(); err != nil {
+		t.Fatal(err)
+	}
+	showcase.request("/final", nil, 200, "Первый результат: 8 из 10", "Курс завершён")
+}
