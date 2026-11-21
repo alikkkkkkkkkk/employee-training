@@ -125,7 +125,7 @@ func TestAssignment(t *testing.T) {
 		mentor.request("/mentor/assign", url.Values{"employee": {"2"}}, 303)
 	}
 	body := mentor.request("/mentor", nil, 200, "Назначенные сотрудники")
-	if strings.Count(body, "<p>Иван Петров —") != 1 {
+	if strings.Count(body, "<td>Иван Петров</td>") != 1 {
 		t.Fatal("expected one assigned employee")
 	}
 	if err := db.Close(); err != nil {
@@ -175,8 +175,127 @@ func TestModuleProgress(t *testing.T) {
 	employee.request("/modules/2", nil, 200, "Модуль 2")
 	employee.request("/modules/3", nil, 403)
 	mentor.request("/mentor/assign", url.Values{"employee": {"2"}}, 303)
-	mentor.request("/mentor", nil, 200, "Иван Петров — модулей пройдено: 1 из 3")
+	mentor.request("/mentor", nil, 200, "<td>Иван Петров</td><td>1 из 3</td>")
 	employee.request("/logout", url.Values{}, 303)
 	employee.login("employee", "Employee-demo-26", "employee")
 	employee.request("/employee", nil, 200, "Пройдено модулей: 1 из 3", `href="/modules/2">Продолжить`)
+}
+
+var submissionField = regexp.MustCompile(`name="submission" value="([^"]+)"`)
+
+func finalForm(b *browser, choices ...int) url.Values {
+	b.t.Helper()
+	body := b.request("/final", nil, 200, "Итоговый тест")
+	match := submissionField.FindStringSubmatch(body)
+	if match == nil {
+		b.t.Fatal("missing final exam form")
+	}
+	form := answers("final", choices...)
+	form.Set("submission", match[1])
+	form.Set("csrf", b.csrf)
+	return form
+}
+
+func passModules(b *browser) {
+	b.t.Helper()
+	choices := [][]int{{1, 0, 2, 1, 0}, {2, 0, 1, 1, 2}, {0, 1, 2, 0, 1}}
+	for index, choice := range choices {
+		number := fmt.Sprint(index + 1)
+		b.request("/modules/"+number+"/read", url.Values{}, 303)
+		b.request("/modules/"+number+"/quiz", answers(number, choice...), 303)
+	}
+}
+
+func TestCourseEndToEnd(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "training.db")
+	db := openDemo(t, path)
+	defer func() { db.Close() }()
+	handler := New(db)
+	mentor, employee := newBrowser(t, handler), newBrowser(t, handler)
+	mentor.login("mentor", "Mentor-demo-26", "mentor")
+	mentor.request("/mentor/assign", url.Values{"employee": {"2"}}, 303)
+	mentor.request("/mentor", nil, 200, "<td>Нет попытки</td><td>Нет попытки</td>")
+	employee.login("employee", "Employee-demo-26", "employee")
+	employee.request("/final", nil, 403)
+	passModules(employee)
+	poor := finalForm(employee, 1, 0, 2, 1, 0, 2, 1, 1, 0, 0) // 7/10
+	employee.request("/final", poor, 303)
+	employee.request("/final", poor, 303)
+	employee.request("/final", nil, 200, "Первый результат: 7 из 10", "Осталось попыток: 2")
+	success := finalForm(employee, 1, 0, 2, 1, 0, 2, 1, 0, 0, 0) // 8/10
+	incomplete := url.Values{}
+	for key, value := range success {
+		incomplete[key] = value
+	}
+	incomplete.Del("final-q10")
+	employee.request("/final", incomplete, 400)
+	employee.request("/final", success, 303)
+	employee.request("/final", success, 303)
+	employee.request("/final", nil, 200, "Курс завершён", "Лучший результат: 8 из 10", "Осталось попыток: 1")
+	mentor.request("/mentor/assign", url.Values{"employee": {"2"}}, 303)
+	mentor.request("/mentor", nil, 200, "<td>Иван Петров</td><td>3 из 3</td>",
+		"<td>Курс завершён</td><td>7 из 10</td><td>8 из 10</td>")
+	employee.request("/mentor", nil, 403)
+	employee.request("/logout", url.Values{}, 303)
+
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+	reopened, err := store.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	db = reopened
+	handler = New(db)
+	employee = newBrowser(t, handler)
+	employee.login("employee", "Employee-demo-26", "employee")
+	employee.request("/employee", nil, 200, "Пройдено модулей: 3 из 3", "Курс завершён")
+	employee.request("/final", nil, 200, "Первый результат: 7 из 10", "Лучший результат: 8 из 10")
+	other := newBrowser(t, handler)
+	other.login("employee2", "Employee-demo-26", "employee")
+	other.request("/final?employee=2", nil, 403)
+}
+
+func TestFinalConcurrentLimit(t *testing.T) {
+	db := openDemo(t, filepath.Join(t.TempDir(), "training.db"))
+	defer db.Close()
+	handler := New(db)
+	mentor, employee := newBrowser(t, handler), newBrowser(t, handler)
+	mentor.login("mentor", "Mentor-demo-26", "mentor")
+	mentor.request("/mentor/assign", url.Values{"employee": {"2"}}, 303)
+	employee.login("employee", "Employee-demo-26", "employee")
+	passModules(employee)
+
+	wrong := []int{0, 1, 0, 0, 1, 0, 0, 1, 0, 0}
+	first := finalForm(employee, wrong...)
+	submitPair := func(a, b url.Values) map[int]int {
+		t.Helper()
+		execute := func(form url.Values, results chan<- int) {
+			resp, err := employee.client.PostForm(employee.base+"/final", form)
+			if err != nil {
+				t.Error(err)
+				results <- 0
+				return
+			}
+			resp.Body.Close()
+			results <- resp.StatusCode
+		}
+		results := make(chan int, 2)
+		go execute(a, results)
+		go execute(b, results)
+		counts := make(map[int]int)
+		counts[<-results]++
+		counts[<-results]++
+		return counts
+	}
+	if statuses := submitPair(first, first); statuses[303] != 2 {
+		t.Fatalf("concurrent duplicate: %v", statuses)
+	}
+	employee.request("/final", nil, 200, "Осталось попыток: 2")
+	employee.request("/final", finalForm(employee, wrong...), 303)
+	third, fourth := finalForm(employee, wrong...), finalForm(employee, wrong...)
+	if statuses := submitPair(third, fourth); statuses[303] != 1 || statuses[409] != 1 {
+		t.Fatalf("concurrent final slot: %v", statuses)
+	}
+	employee.request("/final", nil, 200, "попытки исчерпаны", "Осталось попыток: 0")
 }

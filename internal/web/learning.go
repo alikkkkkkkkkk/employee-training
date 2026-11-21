@@ -125,6 +125,10 @@ func learningError(w http.ResponseWriter, err error) {
 		http.Error(w, "Этот шаг пока закрыт", http.StatusForbidden)
 	case errors.Is(err, store.ErrUnread):
 		http.Error(w, "Сначала подтвердите прочтение материала", http.StatusForbidden)
+	case errors.Is(err, store.ErrFinalLimit):
+		http.Error(w, "Все три попытки использованы", http.StatusConflict)
+	case errors.Is(err, store.ErrCompleted):
+		http.Error(w, "Курс уже завершён", http.StatusConflict)
 	default:
 		fail(w, err)
 	}

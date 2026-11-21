@@ -31,6 +31,7 @@ func (p ModuleProgress) Passed() bool {
 }
 
 type Progress struct {
+	Final    FinalResult
 	Assigned bool
 	Modules  []ModuleProgress
 }
@@ -43,6 +44,10 @@ func (p Progress) Passed() int {
 		}
 	}
 	return count
+}
+
+func (p Progress) FinalOpen() bool {
+	return p.Assigned && p.Passed() == len(training.Modules)
 }
 
 func (p Progress) Module(number int) (ModuleProgress, bool) {
@@ -85,7 +90,11 @@ func loadProgress(db *sql.Tx, employeeID int) (Progress, error) {
 		}
 		p.Modules = append(p.Modules, module)
 	}
-	return p, rows.Err()
+	if err := rows.Err(); err != nil {
+		return p, err
+	}
+	p.Final, err = loadFinal(db, employeeID)
+	return p, err
 }
 
 func (s *Store) ConfirmRead(employeeID, number int) error {

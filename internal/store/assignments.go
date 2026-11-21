@@ -18,6 +18,7 @@ type Assignment struct {
 	Employee User
 	Assigned bool
 	Passed   int
+	Final    FinalResult
 }
 
 func (s *Store) Assign(employeeID int) error {
@@ -43,8 +44,14 @@ func (s *Store) Assign(employeeID int) error {
 func (s *Store) Employees() ([]Assignment, error) {
 	rows, err := s.db.Query(`
 		SELECT u.id, u.login, u.name, a.employee_id IS NOT NULL,
-			(SELECT COUNT(*) FROM module_progress WHERE employee_id=u.id AND last_score>=?)
+			(SELECT COUNT(*) FROM module_progress WHERE employee_id=u.id AND last_score>=?),
+			COALESCE(f.attempts,0), f.first, f.best
 		FROM users u LEFT JOIN assignments a ON a.employee_id=u.id
+		LEFT JOIN (
+			SELECT employee_id, COUNT(*) AS attempts,
+				MAX(CASE WHEN attempt=1 THEN score END) AS first, MAX(score) AS best
+			FROM final_attempts GROUP BY employee_id
+		) f ON f.employee_id=u.id
 		WHERE u.role='employee' ORDER BY u.id`, training.ModulePass)
 	if err != nil {
 		return nil, err
@@ -53,7 +60,7 @@ func (s *Store) Employees() ([]Assignment, error) {
 	var employees []Assignment
 	for rows.Next() {
 		var row Assignment
-		err := rows.Scan(&row.Employee.ID, &row.Employee.Login, &row.Employee.Name, &row.Assigned, &row.Passed)
+		err := rows.Scan(&row.Employee.ID, &row.Employee.Login, &row.Employee.Name, &row.Assigned, &row.Passed, &row.Final.Attempts, &row.Final.First, &row.Final.Best)
 		if err != nil {
 			return nil, err
 		}

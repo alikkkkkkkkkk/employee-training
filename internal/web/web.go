@@ -37,6 +37,8 @@ type app struct {
 }
 
 type view struct {
+	Submission           string
+	AttemptsLeft         int
 	Modules              []moduleLink
 	TotalModules, Number int
 	Module               training.Module
@@ -60,6 +62,8 @@ func New(db *store.Store) http.Handler {
 	mux.HandleFunc("GET /modules/{number}", a.require("employee", a.module))
 	mux.HandleFunc("POST /modules/{number}/read", a.require("employee", a.confirmRead))
 	mux.HandleFunc("POST /modules/{number}/quiz", a.require("employee", a.submitModule))
+	mux.HandleFunc("GET /final", a.require("employee", a.final))
+	mux.HandleFunc("POST /final", a.require("employee", a.submitFinal))
 	mux.HandleFunc("GET /mentor", a.require("mentor", a.mentor))
 	mux.HandleFunc("POST /mentor/assign", a.require("mentor", a.assign))
 	protected := http.NewCrossOriginProtection().Handler(mux)
