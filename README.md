@@ -10,6 +10,7 @@
 Из корня репозитория с Go 1.26:
 
 ```bash
+go run ./cmd/employee-training -seed
 go run ./cmd/employee-training
 ```
 
@@ -19,3 +20,7 @@ go run ./cmd/employee-training
 go test ./...
 go vet ./...
 ```
+
+Для сборки SQLite-драйвера нужен GCC (`sudo apt install build-essential`).
+Учебные аккаунты: `mentor` / `Mentor-demo-26`, `employee` и `employee2` /
+`Employee-demo-26`. Команда с `-seed` добавляет отсутствующие аккаунты.

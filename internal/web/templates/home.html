@@ -16,4 +16,14 @@ fieldset{border:1px solid #d2dde5;border-radius:6px;margin:1rem 0;padding:1rem}p
 </style>
 </head><body><header>Система обучения сотрудников</header><main>{{end}}
 {{define "foot"}}</main></body></html>{{end}}
-{{define "home"}}{{template "head"}}<section><h1>Приёмка товара</h1><p>Учебный курс для сотрудников склада.</p></section>{{template "foot"}}{{end}}
+{{define "csrf"}}<input type="hidden" name="csrf" value="{{.CSRF}}">{{end}}
+{{define "account"}}<section><strong>{{.User.Name}}</strong>
+<form action="/logout" method="post">{{template "csrf" .}}<button>Выйти</button></form></section>{{end}}
+{{define "home"}}{{template "head"}}<section><h1>Приёмка товара</h1><p>Войдите, чтобы открыть учебный кабинет.</p>
+{{if .Message}}<p role="alert">{{.Message}}</p>{{end}}
+<form action="/login" method="post">{{template "csrf" .}}
+<label>Логин <input name="login" required autocomplete="username"></label>
+<label>Пароль <input name="password" type="password" required autocomplete="current-password"></label>
+<button>Войти</button></form></section>{{template "foot"}}{{end}}
+{{define "employee"}}{{template "head"}}{{template "account" .}}<section><h1>Кабинет сотрудника</h1></section>{{template "foot"}}{{end}}
+{{define "mentor"}}{{template "head"}}{{template "account" .}}<section><h1>Кабинет наставника</h1></section>{{template "foot"}}{{end}}
